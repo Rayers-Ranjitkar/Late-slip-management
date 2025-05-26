@@ -40,6 +40,13 @@ func Register(ctx *gin.Context){
 		return
 	}
 
+	 /*TODO: 
+	 --need to check if the student is in the student database which will be imported from excel file 
+	 --if the student is not in the database they have to register from the college email 
+	 --Email should be used to check if the student is in the database
+	 --Student need to register with their college email
+	 */
+
 	//hash password
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(b.Password), 10)
 	if err != nil{
