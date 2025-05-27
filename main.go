@@ -14,26 +14,28 @@ func init() {
 }
 
 func main() {
-	r := gin.Default();
+	r := gin.Default()
 
-    userRoutes := r.Group("/user")
-    {
-        userRoutes.POST("/register", controllers.Register)
-		userRoutes.POST("/login", controllers.Login)
-        
-    }
+	userRoutes := r.Group("/")
+	{
+		userRoutes.POST("/student/register", controllers.Register)
+		userRoutes.POST("/student/login", controllers.Login)
+		userRoutes.POST("/admin/register", controllers.AdminRegister)
+		userRoutes.POST("/admin/login", controllers.AdminLogin)
+
+	}
 
 	studentRoutes := r.Group("/student").Use(middleware.AuthMiddleware(), middleware.RequireRole("student"))
-	studentRoutes.GET("/profile", func(c *gin.Context) {
-		userID := c.GetString("user_id")
-		role := c.GetString("role")
-		c.JSON(200, gin.H{"message": "Welcome to your profile", "user_id": userID})
-		c.JSON(200, gin.H{"message": "Welcome to your student profile", "user_id": userID, "role": role})
-	})
-		
-	
-	
+	{
+		studentRoutes.POST("/requestLateSlip", controllers.RequestLateSlip)
 
+	}
+
+	adminRoutes := r.Group("/admin").Use(middleware.AuthMiddleware(), middleware.RequireRole("admin"))
+	{
+		adminRoutes.PUT("/lateslips/approve/:id", controllers.ApproveLateSlip)
+		// adminRoutes.PUT("/lateslips/reject/:id", controllers.RejectLateSlip)
+		adminRoutes.GET("/lateslips", controllers.GetAllLateSlips)
+	}
 	r.Run()
-
 }
