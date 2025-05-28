@@ -34,9 +34,30 @@ func Register(ctx *gin.Context) {
 		})
 		return
 	}
-	userCollection := initialializers.DB.Collection("users")
+	//TODO: need to validate the email address format as the student model might not be correctly set up
+	// student model will be updated later to include more fields
 
-	//check if user already exists
+	// Check if email exists in student database
+	studentCollection := initialializers.DB.Collection("students")
+	var student models.Student
+	err = studentCollection.FindOne(ctx, bson.M{"email": b.Email}).Decode(&student)
+	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			ctx.JSON(http.StatusBadRequest, gin.H{
+				"success": false,
+				"error":   "Please use your college email address",
+			})
+		} else {
+			ctx.JSON(http.StatusInternalServerError, gin.H{
+				"success": false,
+				"error":   "Error checking student database",
+			})
+		}
+		return
+	}
+
+	// Check if user already exists in users collection
+	userCollection := initialializers.DB.Collection("users")
 	var user models.User
 	err = userCollection.FindOne(ctx, bson.M{"email": b.Email}).Decode(&user)
 	if err == nil {
@@ -46,13 +67,6 @@ func Register(ctx *gin.Context) {
 		})
 		return
 	}
-
-	/*TODO:
-	  --need to check if the student is in the student database which will be imported from excel file which will be implemented later
-	  --if the student is not in the database they have to register from the college email
-	  --Email should be used to check if the student is in the database
-	  --Student need to register with their college email
-	*/
 
 	//hash password
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(b.Password), 10)
