@@ -36,6 +36,8 @@ func main() {
 		adminRoutes.PUT("/lateslips/approve/:id", controllers.ApproveLateSlip)
 		// adminRoutes.PUT("/lateslips/reject/:id", controllers.RejectLateSlip)
 		adminRoutes.GET("/lateslips", controllers.GetAllLateSlips)
+		adminRoutes.POST("/uploadStudentData", controllers.UploadStudentData)
+
 	}
 	r.Run()
 }
