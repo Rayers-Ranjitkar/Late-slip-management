@@ -106,10 +106,11 @@ func UploadStudentData(c *gin.Context) {
 		}
 
 		student := models.Student{
-			StudentID: row[0],
-			Name:      row[1],
-			Email:     row[2],
-			Gender:    row[3],
+			StudentID:     row[0],
+			Name:          row[1],
+			Email:         row[2],
+			Gender:        row[3],
+			LateSlipCount: 0, // Default value
 		}
 
 		// Validate the student struct
