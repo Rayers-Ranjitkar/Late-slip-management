@@ -2,15 +2,72 @@ package controllers
 
 import (
 	"context"
+	"fmt"
 	"lateslip/initialializers"
 	"lateslip/models"
+	"log"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/sendgrid/sendgrid-go"
+	"github.com/sendgrid/sendgrid-go/helpers/mail"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )
+
+// sendEmail sends an email using SendGrid asynchronously
+func sendEmail(toEmail, subject, content string) {
+	go func() {
+		// Check if API key is set
+		apiKey := os.Getenv("SENDGRID_API_KEY")
+		if apiKey == "" {
+			log.Printf("SendGrid API key not found")
+			return
+		}
+
+		fromEmail := os.Getenv("SENDGRID_FROM_EMAIL")
+		if fromEmail == "" {
+			log.Printf("SendGrid from email not found")
+			return
+		}
+
+		from := mail.NewEmail("HeraldSync Late Slip System", fromEmail) // Use full organization name
+		to := mail.NewEmail("Admin", toEmail)                           // Add recipient name
+
+		// Create HTML content
+		htmlContent := fmt.Sprintf(`
+            <div style="font-family: Arial, sans-serif; padding: 20px;">
+                <h2>New Late Slip Request</h2>
+                <p>%s</p>
+                <p>This is an automated message from the HeraldSync Late Slip System.</p>
+            </div>
+        `, content)
+
+		message := mail.NewSingleEmail(from, subject, to, content, htmlContent)
+
+		// Add custom headers
+		message.SetHeader("List-Unsubscribe", "<mailto:unsubscribe@heraldsync.com>")
+		message.SetHeader("Precedence", "bulk")
+
+		client := sendgrid.NewSendClient(apiKey)
+
+		log.Printf("Attempting to send email to: %s", toEmail)
+		response, err := client.Send(message)
+		if err != nil {
+			log.Printf("Failed to send email: %v", err)
+			return
+		}
+
+		if response.StatusCode >= 300 {
+			log.Printf("Email failed with status %d: %s", response.StatusCode, response.Body)
+			return
+		}
+
+		log.Printf("Email sent successfully! Status: %d", response.StatusCode)
+	}()
+}
 
 func RequestLateSlip(c *gin.Context) {
 	//TODO: need to check if student's late slip request limit is reached or not (max is 4 per semester)
@@ -62,6 +119,18 @@ func RequestLateSlip(c *gin.Context) {
 
 	//TODO: send notification to admin
 	// This could be done via email, push notification, etc.
+	sendEmail(
+		"bivekshrestha239@gmail.com",
+		"New Late Slip Request Notification",
+		fmt.Sprintf(`
+        A new late slip request has been submitted with the following details:
+        
+        Student ID: %s
+        Reason: %s
+        Status: %s
+        Submitted: %s
+    `, studentID.Hex(), body.Reason, lateSlip.Status, lateSlip.CreatedAt.Format("Jan 2, 2006 3:04 PM")),
+	)
 
 	//return the late slip
 	c.JSON(http.StatusOK, gin.H{"success": true, "message": "Late slip created successfully", "lateSlip": lateSlip})
@@ -69,13 +138,20 @@ func RequestLateSlip(c *gin.Context) {
 }
 
 func ApproveLateSlip(c *gin.Context) {
-	// Get late slip ID from URL params
-	lateSlipID, err := primitive.ObjectIDFromHex(c.Param("id"))
+	type Body struct {
+		LateSlipID string `json:"lateSlipId" binding:"required"`
+		StudentID  string `json:"studentId" binding:"required"`
+	}
+	var body Body
+	if err := c.BindJSON(&body); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	lateSlipID, err := primitive.ObjectIDFromHex(body.LateSlipID)
+	studentID, err := primitive.ObjectIDFromHex(body.StudentID)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"error":   "Invalid late slip ID",
-		})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid late slip ID"})
 		return
 	}
 
@@ -93,10 +169,44 @@ func ApproveLateSlip(c *gin.Context) {
 		})
 		return
 	}
-	//TODO: check if student's lateslip limit is reached or not (max is 4 per semester)
-	// This could involve checking the number of approved late slips for the student
 
-	//update the late slip status
+	if lateSlip.Status != "pending" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"error":   "Late slip is already " + lateSlip.Status,
+		})
+		return
+	}
+	//TODO: Replace the User model with the Student model
+	UserCollection := initialializers.DB.Collection("users")
+	var student models.User
+	err = UserCollection.FindOne(ctx, bson.M{"_id": studentID}).Decode(&student)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"error":   "Failed to fetch student details",
+		})
+		return
+	}
+
+	//TODO: need to update the lateslip count logic rignt now
+	// --- should use student model instead of lateslip model
+
+	// // Increment late slip count
+	// _, err = StudentCollection.UpdateOne(
+	// 	ctx,
+	// 	bson.M{"_id": lateSlip.StudentID},
+	// 	bson.M{"$inc": bson.M{"lateSlipCount": 1}},
+	// )
+	// if err != nil {
+	// 	c.JSON(http.StatusInternalServerError, gin.H{
+	// 		"success": false,
+	// 		"error":   "Failed to update student late slip count",
+	// 	})
+	// 	return
+	// }
+
+	// Update late slip status
 	lateSlip.Status = "approved"
 	lateSlip.UpdatedAt = time.Now()
 
@@ -110,6 +220,18 @@ func ApproveLateSlip(c *gin.Context) {
 
 	//TODO: send notification to student
 	// This could be done via email, push notification, etc.
+	sendEmail(
+		"bivekshrestha239@gmail.com",
+		"Late Slip Approval Notification",
+		fmt.Sprintf(`
+        Your late slip request has been approved.
+        
+        Late Slip ID: %s\n
+        Reason: %s\n
+        Status: %s\n
+        Approved: %s\n
+	`, lateSlip.ID.Hex(), lateSlip.Reason, lateSlip.Status, lateSlip.UpdatedAt.Format("Jan 2, 2006 3:04 PM")),
+	)
 
 	//return the late slip
 	c.JSON(http.StatusOK, gin.H{"success": true, "message": "Late slip approved successfully", "lateSlip": lateSlip})

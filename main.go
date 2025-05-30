@@ -33,7 +33,7 @@ func main() {
 
 	adminRoutes := r.Group("/admin").Use(middleware.AuthMiddleware(), middleware.RequireRole("admin"))
 	{
-		adminRoutes.PUT("/lateslips/approve/:id", controllers.ApproveLateSlip)
+		adminRoutes.PUT("/lateslips/approve/", controllers.ApproveLateSlip)
 		// adminRoutes.PUT("/lateslips/reject/:id", controllers.RejectLateSlip)
 		adminRoutes.GET("/lateslips", controllers.GetAllLateSlips)
 		adminRoutes.POST("/uploadStudentData", controllers.UploadStudentData)
