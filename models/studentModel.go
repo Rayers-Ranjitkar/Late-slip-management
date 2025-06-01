@@ -7,7 +7,8 @@ type Student struct {
 	StudentID     string             `bson:"student_id" json:"student_id"`
 	Name          string             `bson:"name" json:"name"`
 	Email         string             `bson:"email" json:"email"`
-	Gender        string             `bson:"gender" json:"gender"`
+	Semester      string             `bson:"semester" json:"semester"`
+	Level         string             `bson:"level" json:"level"`
 	LateSlipCount int                `bson:"late_slip_count" json:"late_slip_count"`
 	//TODO: need to replace gender with Semester
 	// -- this is just a placeholder for now

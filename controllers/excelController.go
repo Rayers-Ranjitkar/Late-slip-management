@@ -105,11 +105,21 @@ func UploadStudentData(c *gin.Context) {
 			return
 		}
 
+		//TODO: can use switch case for name, full name , email, email address
+		// 		ID            primitive.ObjectID `bson:"_id,omitempty" json:"id"`
+		// StudentID     string             `bson:"student_id" json:"student_id"`
+		// Name          string             `bson:"name" json:"name"`
+		// Email         string             `bson:"email" json:"email"`
+		// Semester      string             `bson:"semester" json:"semester"`
+		// Level         string             `bson:"level" json:"level"`
+		// LateSlipCount int                `bson:"late_slip_count" json:"late_slip_count"`
+
 		student := models.Student{
 			StudentID:     row[0],
 			Name:          row[1],
 			Email:         row[2],
-			Gender:        row[3],
+			Semester:      row[3],
+			Level:         row[4],
 			LateSlipCount: 0, // Default value
 		}
 

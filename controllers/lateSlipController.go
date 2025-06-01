@@ -3,6 +3,7 @@ package controllers
 import (
 	"context"
 	"fmt"
+	"lateslip/events"
 	"lateslip/initialializers"
 	"lateslip/models"
 	"log"
@@ -33,8 +34,8 @@ func sendEmail(toEmail, subject, content string) {
 			return
 		}
 
-		from := mail.NewEmail("HeraldSync Late Slip System", fromEmail) // Use full organization name
-		to := mail.NewEmail("Admin", toEmail)                           // Add recipient name
+		from := mail.NewEmail("HeraldSync Late Slip System", fromEmail)
+		to := mail.NewEmail("Admin", toEmail)
 
 		// Create HTML content
 		htmlContent := fmt.Sprintf(`
@@ -47,9 +48,9 @@ func sendEmail(toEmail, subject, content string) {
 
 		message := mail.NewSingleEmail(from, subject, to, content, htmlContent)
 
-		// Add custom headers
-		message.SetHeader("List-Unsubscribe", "<mailto:unsubscribe@heraldsync.com>")
-		message.SetHeader("Precedence", "bulk")
+		// // Add custom headers
+		// message.SetHeader("List-Unsubscribe", "<mailto:unsubscribe@heraldsync.com>")
+		// message.SetHeader("Precedence", "bulk")
 
 		client := sendgrid.NewSendClient(apiKey)
 
@@ -132,6 +133,18 @@ func RequestLateSlip(c *gin.Context) {
     `, studentID.Hex(), body.Reason, lateSlip.Status, lateSlip.CreatedAt.Format("Jan 2, 2006 3:04 PM")),
 	)
 
+	// Send SSE notification to admin
+	events.Manager.SendAdminNotification(gin.H{
+		"type": "NEW_LATE_SLIP_REQUEST",
+		"data": gin.H{
+			"id":        lateSlip.ID.Hex(),
+			"studentId": studentID.Hex(),
+			"reason":    lateSlip.Reason,
+			"status":    lateSlip.Status,
+			"createdAt": lateSlip.CreatedAt,
+		},
+	})
+
 	//return the late slip
 	c.JSON(http.StatusOK, gin.H{"success": true, "message": "Late slip created successfully", "lateSlip": lateSlip})
 
@@ -149,6 +162,10 @@ func ApproveLateSlip(c *gin.Context) {
 	}
 
 	lateSlipID, err := primitive.ObjectIDFromHex(body.LateSlipID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid late slip ID"})
+		return
+	}
 	studentID, err := primitive.ObjectIDFromHex(body.StudentID)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid late slip ID"})
@@ -226,16 +243,26 @@ func ApproveLateSlip(c *gin.Context) {
 		fmt.Sprintf(`
         Your late slip request has been approved.
         
-        Late Slip ID: %s\n
-        Reason: %s\n
-        Status: %s\n
-        Approved: %s\n
-	`, lateSlip.ID.Hex(), lateSlip.Reason, lateSlip.Status, lateSlip.UpdatedAt.Format("Jan 2, 2006 3:04 PM")),
+        Late Slip ID: %s
+        Reason: %s
+        Status: %s
+        Approved: %s
+    `, lateSlip.ID.Hex(), lateSlip.Reason, lateSlip.Status, lateSlip.UpdatedAt.Format("Jan 2, 2006 3:04 PM")),
 	)
+
+	// Send SSE notification to student
+	events.Manager.SendEventToClient(body.StudentID, gin.H{
+		"type": "LATE_SLIP_APPROVED",
+		"data": gin.H{
+			"id":        lateSlip.ID.Hex(),
+			"reason":    lateSlip.Reason,
+			"status":    "approved",
+			"updatedAt": lateSlip.UpdatedAt,
+		},
+	})
 
 	//return the late slip
 	c.JSON(http.StatusOK, gin.H{"success": true, "message": "Late slip approved successfully", "lateSlip": lateSlip})
-
 }
 
 func GetAllLateSlips(c *gin.Context) {
@@ -259,4 +286,145 @@ func GetAllLateSlips(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"success": true, "lateSlips": lateSlips})
+}
+
+// GET /admin/lateslip/requests
+func GetAllPendingLateSlip(c *gin.Context) {
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
+	defer cancel()
+
+	lateSlipCollection := initialializers.DB.Collection("lateslips")
+	cursor, err := lateSlipCollection.Find(ctx, bson.M{"status": "pending"})
+	if err != nil {
+		c.Error(err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch late slips"})
+		return
+	}
+	defer cursor.Close(ctx)
+
+	var lateSlips []models.LateSlip
+	if err = cursor.All(ctx, &lateSlips); err != nil {
+		c.Error(err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to decode late slips"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"success": true, "lateSlips": lateSlips})
+
+}
+
+// reject late slip
+func RejectLateSlip(c *gin.Context) {
+	type Body struct {
+		LateSlipID string `json:"lateSlipId" binding:"required"`
+		StudentID  string `json:"studentId" binding:"required"`
+	}
+	var body Body
+	if err := c.BindJSON(&body); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	lateSlipID, err := primitive.ObjectIDFromHex(body.LateSlipID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid late slip ID"})
+		return
+	}
+	studentID, err := primitive.ObjectIDFromHex(body.StudentID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid late slip ID"})
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
+	defer cancel()
+
+	lateSlipCollection := initialializers.DB.Collection("lateslips")
+	var lateSlip models.LateSlip
+	err = lateSlipCollection.FindOne(ctx, bson.M{"_id": lateSlipID}).Decode(&lateSlip)
+	if err != nil {
+		c.Error(err)
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"error":   "Failed to fetch late slip",
+		})
+		return
+	}
+
+	if lateSlip.Status != "pending" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"error":   "Late slip is already " + lateSlip.Status,
+		})
+		return
+	}
+	//TODO: Replace the User model with the Student model
+	UserCollection := initialializers.DB.Collection("users")
+	var student models.User
+	err = UserCollection.FindOne(ctx, bson.M{"_id": studentID}).Decode(&student)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"error":   "Failed to fetch student details",
+		})
+		return
+	}
+
+	//TODO: need to update the lateslip count logic rignt now
+	// --- should use student model instead of lateslip model
+
+	// // Increment late slip count
+	// _, err = StudentCollection.UpdateOne(
+	// 	ctx,
+	// 	bson.M{"_id": lateSlip.StudentID},
+	// 	bson.M{"$inc": bson.M{"lateSlipCount": 1}},
+	// )
+	// if err != nil {
+	// 	c.JSON(http.StatusInternalServerError, gin.H{
+	// 		"success": false,
+	// 		"error":   "Failed to update student late slip count",
+	// 	})
+	// 	return
+	// }
+
+	// Update late slip status
+	lateSlip.Status = "rejected"
+	lateSlip.UpdatedAt = time.Now()
+
+	//update the late slip in the database
+	_, err = lateSlipCollection.UpdateOne(ctx, bson.M{"_id": lateSlipID}, bson.M{"$set": lateSlip})
+	if err != nil {
+		c.Error(err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update late slip"})
+		return
+	}
+
+	//TODO: send notification to student
+	// This could be done via email, push notification, etc.
+	sendEmail(
+		"bivekshrestha239@gmail.com",
+		"Late Slip Rejection Notification",
+		fmt.Sprintf(`
+        Your late slip request has been rejected.
+        
+        Late Slip ID: %s\n
+        Reason: %s\n
+        Status: %s\n
+        Approved: %s\n
+	`, lateSlip.ID.Hex(), lateSlip.Reason, lateSlip.Status, lateSlip.UpdatedAt.Format("Jan 2, 2006 3:04 PM")),
+	)
+
+	// Send SSE notification to student
+	events.Manager.SendEventToClient(body.StudentID, gin.H{
+		"type": "LATE_SLIP_REJECTED",
+		"data": gin.H{
+			"id":        lateSlip.ID.Hex(),
+			"reason":    lateSlip.Reason,
+			"status":    "rejected",
+			"updatedAt": lateSlip.UpdatedAt,
+		},
+	})
+
+	//return the late slip
+	c.JSON(http.StatusOK, gin.H{"success": true, "message": "Late slip rejected successfully", "lateSlip": lateSlip})
 }

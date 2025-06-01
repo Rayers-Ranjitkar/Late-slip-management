@@ -2,6 +2,7 @@ package main
 
 import (
 	"lateslip/controllers"
+	"lateslip/events"
 	"lateslip/initialializers"
 	"lateslip/middleware"
 
@@ -28,16 +29,21 @@ func main() {
 	studentRoutes := r.Group("/student").Use(middleware.AuthMiddleware(), middleware.RequireRole("student"))
 	{
 		studentRoutes.POST("/requestLateSlip", controllers.RequestLateSlip)
-
+		// Add SSE route for students
+		studentRoutes.GET("/notifications/sse", events.SSEHandler)
 	}
 
 	adminRoutes := r.Group("/admin").Use(middleware.AuthMiddleware(), middleware.RequireRole("admin"))
 	{
 		adminRoutes.PUT("/lateslips/approve/", controllers.ApproveLateSlip)
-		// adminRoutes.PUT("/lateslips/reject/:id", controllers.RejectLateSlip)
 		adminRoutes.GET("/lateslips", controllers.GetAllLateSlips)
 		adminRoutes.POST("/uploadStudentData", controllers.UploadStudentData)
-
+		adminRoutes.GET("/lateslips/pending", controllers.GetAllPendingLateSlip)
+		adminRoutes.PUT("/lateslips/reject/", controllers.RejectLateSlip)
+		// Add SSE routes for admins
+		adminRoutes.GET("/notifications/sse", events.SSEHandler)
+		adminRoutes.GET("/notifications/status", events.GetConnectedClients)
 	}
-	r.Run()
+
+	r.Run(":8000")
 }
