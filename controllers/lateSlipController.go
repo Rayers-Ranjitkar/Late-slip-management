@@ -3,7 +3,7 @@ package controllers
 import (
 	"context"
 	"fmt"
-	"lateslip/events"
+
 	"lateslip/initialializers"
 	"lateslip/models"
 	"log"
@@ -133,18 +133,6 @@ func RequestLateSlip(c *gin.Context) {
     `, studentID.Hex(), body.Reason, lateSlip.Status, lateSlip.CreatedAt.Format("Jan 2, 2006 3:04 PM")),
 	)
 
-	// Send SSE notification to admin
-	events.Manager.SendAdminNotification(gin.H{
-		"type": "NEW_LATE_SLIP_REQUEST",
-		"data": gin.H{
-			"id":        lateSlip.ID.Hex(),
-			"studentId": studentID.Hex(),
-			"reason":    lateSlip.Reason,
-			"status":    lateSlip.Status,
-			"createdAt": lateSlip.CreatedAt,
-		},
-	})
-
 	//return the late slip
 	c.JSON(http.StatusOK, gin.H{"success": true, "message": "Late slip created successfully", "lateSlip": lateSlip})
 
@@ -249,17 +237,6 @@ func ApproveLateSlip(c *gin.Context) {
         Approved: %s
     `, lateSlip.ID.Hex(), lateSlip.Reason, lateSlip.Status, lateSlip.UpdatedAt.Format("Jan 2, 2006 3:04 PM")),
 	)
-
-	// Send SSE notification to student
-	events.Manager.SendEventToClient(body.StudentID, gin.H{
-		"type": "LATE_SLIP_APPROVED",
-		"data": gin.H{
-			"id":        lateSlip.ID.Hex(),
-			"reason":    lateSlip.Reason,
-			"status":    "approved",
-			"updatedAt": lateSlip.UpdatedAt,
-		},
-	})
 
 	//return the late slip
 	c.JSON(http.StatusOK, gin.H{"success": true, "message": "Late slip approved successfully", "lateSlip": lateSlip})
@@ -413,17 +390,6 @@ func RejectLateSlip(c *gin.Context) {
         Approved: %s\n
 	`, lateSlip.ID.Hex(), lateSlip.Reason, lateSlip.Status, lateSlip.UpdatedAt.Format("Jan 2, 2006 3:04 PM")),
 	)
-
-	// Send SSE notification to student
-	events.Manager.SendEventToClient(body.StudentID, gin.H{
-		"type": "LATE_SLIP_REJECTED",
-		"data": gin.H{
-			"id":        lateSlip.ID.Hex(),
-			"reason":    lateSlip.Reason,
-			"status":    "rejected",
-			"updatedAt": lateSlip.UpdatedAt,
-		},
-	})
 
 	//return the late slip
 	c.JSON(http.StatusOK, gin.H{"success": true, "message": "Late slip rejected successfully", "lateSlip": lateSlip})

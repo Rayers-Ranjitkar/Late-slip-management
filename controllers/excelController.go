@@ -166,3 +166,118 @@ func UploadStudentData(c *gin.Context) {
 		},
 	})
 }
+
+func UploadScheduleData(c *gin.Context) {
+	//get the file from the request
+	fileHeader, err := c.FormFile("file")
+	if err != nil {
+		c.JSON(400, gin.H{"error": "File not found"})
+		return
+	}
+
+	//check if the file is an Excel file
+	if !strings.HasSuffix(fileHeader.Filename, ".xlsx") {
+		c.JSON(400, gin.H{"error": "Invalid file type. Please upload an Excel file."})
+		return
+	}
+
+	// Open the uploaded file
+	file, err := fileHeader.Open()
+	if err != nil {
+		c.JSON(400, gin.H{"error": "Failed to open file"})
+		return
+	}
+	defer file.Close()
+
+	// Read the Excel file
+	xlsx, err := excelize.OpenReader(file)
+	if err != nil {
+		c.JSON(400, gin.H{
+			"success": false,
+			"error":   "Failed to parse Excel file",
+		})
+		return
+	}
+	defer xlsx.Close()
+
+	// Get all rows from Sheet1
+	rows, err := xlsx.GetRows("Sheet1")
+	if err != nil || len(rows) < 2 {
+		c.JSON(400, gin.H{
+			"success": false,
+			"error":   "Empty or invalid Excel sheet",
+		})
+		return
+	}
+
+	var newSchedules []models.Schedule
+	validator := validator.New()
+
+	// First, get all existing schedules' names in one query
+	schedulesCollection := initialializers.DB.Collection("schedules")
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	//process excel rows
+	for i, row := range rows[1:] { // Skip header row
+		if len(row) < 4 {
+			c.JSON(400, gin.H{
+				"success": false,
+				"error":   "Invalid data format in row " + strconv.Itoa(i+2),
+				"row":     row,
+			})
+			return
+		}
+
+		schedule := models.Schedule{
+			ID:             primitive.NewObjectID(),
+			ModuleCode:     row[0],
+			ModuleName:     row[1],
+			StartTime:      row[2],
+			EndTime:        row[3],
+			Day:            row[4],
+			RoomName:       row[5],
+			InstructorName: row[6],
+			Semester:       row[7],
+			CreatedAt:      time.Now(),
+			UpdatedAt:      time.Now(),
+		}
+
+		// Validate the schedule struct
+		if err := validator.Struct(schedule); err != nil {
+			c.JSON(400, gin.H{
+				"success": false,
+				"error":   "Invalid data in row " + strconv.Itoa(i+2) + ": " + err.Error(),
+				"row":     row,
+			})
+			return
+		}
+		newSchedules = append(newSchedules, schedule)
+
+	}
+	if len(newSchedules) > 0 {
+		var documents []any
+		for _, schedule := range newSchedules {
+			documents = append(documents, schedule)
+		}
+
+		_, err = schedulesCollection.InsertMany(ctx, documents)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"success": false,
+				"mesasge": "Failed to insert new schedules",
+				"error":   err.Error(),
+			})
+			return
+		}
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "Excel file processed successfully",
+		"stats": gin.H{
+			"new": len(newSchedules),
+		},
+	})
+
+}
