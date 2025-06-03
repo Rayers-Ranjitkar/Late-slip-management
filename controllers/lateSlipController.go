@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"lateslip/events"
 	"lateslip/initialializers"
 	"lateslip/models"
 	"log"
@@ -76,6 +77,7 @@ func RequestLateSlip(c *gin.Context) {
 
 	//get student ID from context and reason from request body
 	userId, exists := c.Get("user_id")
+	requestID := c.GetString("request_id")
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
 		return
@@ -102,6 +104,7 @@ func RequestLateSlip(c *gin.Context) {
 
 	lateSlip := models.LateSlip{
 		ID:        primitive.NewObjectID(),
+		RequestID: requestID,
 		StudentID: studentID,
 		Reason:    body.Reason,
 		Status:    "pending",
@@ -132,6 +135,10 @@ func RequestLateSlip(c *gin.Context) {
         Submitted: %s
     `, studentID.Hex(), body.Reason, lateSlip.Status, lateSlip.CreatedAt.Format("Jan 2, 2006 3:04 PM")),
 	)
+	events.NotifyAdmins(
+		fmt.Sprintf("New late slip request from %s", studentID.Hex()),
+		lateSlip,
+	)
 
 	//return the late slip
 	c.JSON(http.StatusOK, gin.H{"success": true, "message": "Late slip created successfully", "lateSlip": lateSlip})
@@ -151,12 +158,12 @@ func ApproveLateSlip(c *gin.Context) {
 
 	lateSlipID, err := primitive.ObjectIDFromHex(body.LateSlipID)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid late slip ID"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid student ID"})
 		return
 	}
 	studentID, err := primitive.ObjectIDFromHex(body.StudentID)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid late slip ID"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid student ID"})
 		return
 	}
 
@@ -237,6 +244,10 @@ func ApproveLateSlip(c *gin.Context) {
         Approved: %s
     `, lateSlip.ID.Hex(), lateSlip.Reason, lateSlip.Status, lateSlip.UpdatedAt.Format("Jan 2, 2006 3:04 PM")),
 	)
+	events.NotifyStudent(
+		studentID.Hex(),
+		fmt.Sprintf("Your late slip request has been %s", lateSlip.Status),
+	)
 
 	//return the late slip
 	c.JSON(http.StatusOK, gin.H{"success": true, "message": "Late slip approved successfully", "lateSlip": lateSlip})
@@ -309,7 +320,7 @@ func RejectLateSlip(c *gin.Context) {
 	}
 	studentID, err := primitive.ObjectIDFromHex(body.StudentID)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid late slip ID"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid student ID"})
 		return
 	}
 
@@ -384,11 +395,15 @@ func RejectLateSlip(c *gin.Context) {
 		fmt.Sprintf(`
         Your late slip request has been rejected.
         
-        Late Slip ID: %s\n
-        Reason: %s\n
-        Status: %s\n
-        Approved: %s\n
-	`, lateSlip.ID.Hex(), lateSlip.Reason, lateSlip.Status, lateSlip.UpdatedAt.Format("Jan 2, 2006 3:04 PM")),
+        Late Slip ID: %s
+        Reason: %s
+        Status: %s
+        Approved: %s
+    `, lateSlip.ID.Hex(), lateSlip.Reason, lateSlip.Status, lateSlip.UpdatedAt.Format("Jan 2, 2006 3:04 PM")),
+	)
+	events.NotifyStudent(
+		studentID.Hex(),
+		fmt.Sprintf("Your late slip request has been %s", lateSlip.Status),
 	)
 
 	//return the late slip

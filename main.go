@@ -2,6 +2,7 @@ package main
 
 import (
 	"lateslip/controllers"
+	"lateslip/events"
 
 	"lateslip/initialializers"
 	"lateslip/middleware"
@@ -17,6 +18,8 @@ func init() {
 func main() {
 	r := gin.Default()
 
+	r.Use(middleware.RequestIDMiddleware())
+
 	userRoutes := r.Group("/")
 	{
 		userRoutes.POST("/student/register", controllers.Register)
@@ -26,10 +29,12 @@ func main() {
 
 	}
 
+	// Add SSE routes
 	studentRoutes := r.Group("/student").Use(middleware.AuthMiddleware(), middleware.RequireRole("student"))
 	{
 		studentRoutes.POST("/requestLateSlip", controllers.RequestLateSlip)
-
+		// Add SSE endpoint for students
+		studentRoutes.GET("/notifications", events.SSEHandler)
 	}
 
 	adminRoutes := r.Group("/admin").Use(middleware.AuthMiddleware(), middleware.RequireRole("admin"))
@@ -40,7 +45,9 @@ func main() {
 		adminRoutes.GET("/lateslips/pending", controllers.GetAllPendingLateSlip)
 		adminRoutes.PUT("/lateslips/reject/", controllers.RejectLateSlip)
 		adminRoutes.POST("/uploadScheduleData", controllers.UploadScheduleData)
-
+		// Add SSE endpoint for admins
+		adminRoutes.GET("/notifications", events.SSEHandler)
+		// adminRoutes.GET("/notifications/status", events.GetConnectedClients)
 	}
 
 	r.Run(":8000")
