@@ -2,11 +2,11 @@ package events
 
 import "sync"
 
-type SSEClient struct {
-	ID      string
-	Events  chan string
-	IsAdmin bool
-}
+// type SSEClient struct {
+// 	ID      string
+// 	Events  chan string
+// 	IsAdmin bool
+// }
 
 type ClientManager struct {
 	adminClients   map[chan string]bool
