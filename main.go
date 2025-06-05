@@ -39,11 +39,11 @@ func main() {
 
 	adminRoutes := r.Group("/admin").Use(middleware.AuthMiddleware(), middleware.RequireRole("admin"))
 	{
-		adminRoutes.PUT("/lateslips/approve/", controllers.ApproveLateSlip)
+		adminRoutes.PUT("/lateslips/approve", controllers.ApproveLateSlip)
 		adminRoutes.GET("/lateslips", controllers.GetAllLateSlips)
 		adminRoutes.POST("/uploadStudentData", controllers.UploadStudentData)
 		adminRoutes.GET("/lateslips/pending", controllers.GetAllPendingLateSlip)
-		adminRoutes.PUT("/lateslips/reject/", controllers.RejectLateSlip)
+		adminRoutes.PUT("/lateslips/reject", controllers.RejectLateSlip)
 		adminRoutes.POST("/uploadScheduleData", controllers.UploadScheduleData)
 		// Add SSE endpoint for admins
 		adminRoutes.GET("/notifications", events.SSEHandler)

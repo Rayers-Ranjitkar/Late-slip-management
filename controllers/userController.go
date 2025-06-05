@@ -101,7 +101,14 @@ func Register(ctx *gin.Context) {
 	ctx.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "User created",
-		"user":    user,
+		"user": gin.H{
+			"id":        user.ID.Hex(),
+			"fullname":  user.Fullname,
+			"email":     user.Email,
+			"role":      user.Role,
+			"createdAt": user.CreatedAt,
+			"updatedAt": user.UpdatedAt,
+		},
 	})
 }
 
@@ -239,7 +246,14 @@ func AdminRegister(ctx *gin.Context) {
 	ctx.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "Admin user created successfully",
-		"user":    user,
+		"user": gin.H{
+			"id":        user.ID.Hex(),
+			"fullname":  user.Fullname,
+			"email":     user.Email,
+			"role":      user.Role,
+			"createdAt": user.CreatedAt,
+			"updatedAt": user.UpdatedAt,
+		},
 	})
 }
 
