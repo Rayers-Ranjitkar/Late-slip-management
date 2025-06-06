@@ -6,8 +6,12 @@ import (
 )
 
 func NotifyStudent(studentID string, message string) {
-	if studentChan, exists := clientManager.studentClients[studentID]; exists {
-		studentChan <- message
+	clientManager.mu.Lock()
+	defer clientManager.mu.Unlock()
+
+	if client, exists := clientManager.studentClients[studentID]; exists {
+		// If message is already JSON, use it directly
+		client.Send <- []byte(message)
 	}
 }
 
@@ -29,7 +33,10 @@ func NotifyAdmins(message string, lateSlip models.LateSlip) {
 		return
 	}
 
-	for adminChan := range clientManager.adminClients {
-		adminChan <- string(jsonMsg)
+	clientManager.mu.Lock()
+	defer clientManager.mu.Unlock()
+
+	for client := range clientManager.adminClients {
+		client.Send <- jsonMsg
 	}
 }

@@ -29,12 +29,12 @@ func main() {
 
 	}
 
-	// Add SSE routes
+	// Add WebSocket routes
 	studentRoutes := r.Group("/student").Use(middleware.AuthMiddleware(), middleware.RequireRole("student"))
 	{
 		studentRoutes.POST("/requestLateSlip", controllers.RequestLateSlip)
-		// Add SSE endpoint for students
-		studentRoutes.GET("/notifications", events.SSEHandler)
+		// Replace SSE with WebSocket endpoint for students
+		studentRoutes.GET("/ws", events.WebSocketHandler)
 	}
 
 	adminRoutes := r.Group("/admin").Use(middleware.AuthMiddleware(), middleware.RequireRole("admin"))
@@ -45,9 +45,8 @@ func main() {
 		adminRoutes.GET("/lateslips/pending", controllers.GetAllPendingLateSlip)
 		adminRoutes.PUT("/lateslips/reject", controllers.RejectLateSlip)
 		adminRoutes.POST("/uploadScheduleData", controllers.UploadScheduleData)
-		// Add SSE endpoint for admins
-		adminRoutes.GET("/notifications", events.SSEHandler)
-		// adminRoutes.GET("/notifications/status", events.GetConnectedClients)
+		// Replace SSE with WebSocket endpoint for admins
+		adminRoutes.GET("/ws", events.WebSocketHandler)
 	}
 
 	r.Run(":8000")

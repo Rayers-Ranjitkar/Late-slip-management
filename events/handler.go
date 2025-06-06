@@ -1,6 +1,7 @@
 package events
 
 import (
+	"log"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -8,8 +9,8 @@ import (
 
 var clientManager = NewClientManager()
 
-// SSEHandler handles SSE connections for both admin and student clients
-func SSEHandler(c *gin.Context) {
+// WebSocketHandler handles WebSocket connections for both admin and student clients
+func WebSocketHandler(c *gin.Context) {
 	userID := c.GetString("user_id")
 	role := c.GetString("role")
 
@@ -19,36 +20,31 @@ func SSEHandler(c *gin.Context) {
 	}
 
 	isAdmin := role == "admin"
-	messageChan := clientManager.AddClient(userID, isAdmin)
-	defer clientManager.RemoveClient(userID, messageChan, isAdmin)
 
-	// Set SSE headers
-	SetHeaders(c)
+	// Upgrade HTTP connection to WebSocket
+	conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
+	if err != nil {
+		log.Printf("Failed to upgrade connection to WebSocket: %v", err)
+		return
+	}
+
+	// Create new client
+	client := NewClient(conn, userID, isAdmin, clientManager)
+
+	// Register client with manager
+	clientManager.Register(client)
 
 	// Send initial connection message
-	SendEventWithType(c, "CONNECTED", gin.H{
-		"message": "SSE connection established",
-		"time":    time.Now(),
-	})
-
-	// Keep connection alive
-	ticker := time.NewTicker(30 * time.Second)
-	defer ticker.Stop()
-
-	clientGone := c.Writer.CloseNotify()
-
-	for {
-		select {
-		case msg := <-messageChan:
-			if err := SendMessage(c, msg); err != nil {
-				return
-			}
-		case <-ticker.C:
-			if err := SendEventWithType(c, "HEARTBEAT", nil); err != nil {
-				return
-			}
-		case <-clientGone:
-			return
-		}
+	initialMessage := struct {
+		Type string      `json:"type"`
+		Data interface{} `json:"data"`
+	}{
+		Type: "CONNECTED",
+		Data: gin.H{
+			"message": "WebSocket connection established",
+			"time":    time.Now(),
+		},
 	}
+
+	client.SendJSON(initialMessage)
 }
