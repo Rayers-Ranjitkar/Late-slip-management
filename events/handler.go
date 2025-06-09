@@ -105,7 +105,7 @@ func WebSocketHandler(c *gin.Context) {
 }
 
 func StartScheduleNotifier() {
-	ticker := time.NewTicker(1 * time.Minute)
+	ticker := time.NewTicker(5 * time.Second)
 	go func() {
 		for range ticker.C {
 			checkUpcomingClasses()
