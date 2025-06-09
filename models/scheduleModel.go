@@ -17,6 +17,7 @@ type Schedule struct {
 	RoomName       string             `bson:"room_name" json:"room_name"`
 	InstructorName string             `bson:"instructor_name" json:"instructor_name"`
 	Semester       string             `bson:"semester" json:"semester"`
+	Level          string             `bson:"level" json:"level"` //eg - L5CG
 	CreatedAt      time.Time          `bson:"created_at" json:"created_at"`
 	UpdatedAt      time.Time          `bson:"updated_at" json:"updated_at"`
 }

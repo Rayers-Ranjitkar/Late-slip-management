@@ -49,5 +49,7 @@ func main() {
 		adminRoutes.GET("/ws", events.WebSocketHandler)
 	}
 
+	events.StartScheduleNotifier()
+
 	r.Run(":8000")
 }
