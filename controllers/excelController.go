@@ -238,7 +238,8 @@ func UploadScheduleData(c *gin.Context) {
 			Day:            row[4],
 			RoomName:       row[5],
 			InstructorName: row[6],
-			Semester:       row[7],
+			Level:          row[7],
+			Semester:       row[8],
 			CreatedAt:      time.Now(),
 			UpdatedAt:      time.Now(),
 		}

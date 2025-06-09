@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -20,20 +21,21 @@ var upgrader = websocket.Upgrader{
 
 // Client represents a WebSocket client connection
 type Client struct {
-	Conn     *websocket.Conn
-	UserID   string
-	IsAdmin  bool
-	Send     chan []byte
-	Manager  *ClientManager
+	Conn    *websocket.Conn
+	Send    chan []byte
+	UserID  string
+	IsAdmin bool
+	Manager *ClientManager
+	writeMu sync.Mutex // Add mutex for write synchronization
 }
 
 // NewClient creates a new WebSocket client
 func NewClient(conn *websocket.Conn, userID string, isAdmin bool, manager *ClientManager) *Client {
 	return &Client{
 		Conn:    conn,
+		Send:    make(chan []byte, 256),
 		UserID:  userID,
 		IsAdmin: isAdmin,
-		Send:    make(chan []byte, 256),
 		Manager: manager,
 	}
 }
@@ -83,15 +85,19 @@ func (c *Client) WritePump() {
 				return
 			}
 
+			c.writeMu.Lock() // Acquire the lock before writing
 			w, err := c.Conn.NextWriter(websocket.TextMessage)
 			if err != nil {
+				c.writeMu.Unlock() // Ensure the lock is released on error
 				return
 			}
 			w.Write(message)
 
 			if err := w.Close(); err != nil {
+				c.writeMu.Unlock() // Ensure the lock is released on error
 				return
 			}
+			c.writeMu.Unlock() // Release the lock after writing
 		case <-ticker.C:
 			c.Conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
 			// Send ping
@@ -102,7 +108,7 @@ func (c *Client) WritePump() {
 				Type: "HEARTBEAT",
 				Data: nil,
 			}
-			
+
 			heartbeatJSON, _ := json.Marshal(heartbeat)
 			if err := c.Conn.WriteMessage(websocket.TextMessage, heartbeatJSON); err != nil {
 				return
@@ -117,7 +123,7 @@ func (c *Client) SendJSON(data interface{}) error {
 	if err != nil {
 		return err
 	}
-	
+
 	select {
 	case c.Send <- jsonData:
 		return nil

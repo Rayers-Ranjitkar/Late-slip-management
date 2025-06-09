@@ -80,7 +80,7 @@ func Register(ctx *gin.Context) {
 
 	//create user
 	user = models.User{
-		ID:        primitive.NewObjectID(),
+		ID:        student.ID,
 		Fullname:  b.Fullname,
 		Email:     b.Email,
 		Password:  string(hashedPassword),
