@@ -78,7 +78,7 @@ func WebSocketHandler(c *gin.Context) {
 
 	// Start ping/pong
 	go func() {
-		ticker := time.NewTicker(30 * time.Second)
+		ticker := time.NewTicker(1 * time.Minute)
 		defer ticker.Stop()
 
 		for {

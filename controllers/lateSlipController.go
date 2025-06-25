@@ -409,3 +409,38 @@ func RejectLateSlip(c *gin.Context) {
 	//return the late slip
 	c.JSON(http.StatusOK, gin.H{"success": true, "message": "Late slip rejected successfully", "lateSlip": lateSlip})
 }
+
+func GetStudentsLateslip(c *gin.Context) {
+	userId, exists := c.Get("user_id")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
+		return
+	}
+
+	studentID, err := primitive.ObjectIDFromHex(userId.(string))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user ID"})
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
+	defer cancel()
+
+	lateSlipCollection := initialializers.DB.Collection("lateslips")
+	cursor, err := lateSlipCollection.Find(ctx, bson.M{"student_id": studentID})
+	if err != nil {
+		c.Error(err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch late slips"})
+		return
+	}
+	defer cursor.Close(ctx)
+
+	var lateSlips []models.LateSlip
+	if err = cursor.All(ctx, &lateSlips); err != nil {
+		c.Error(err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to decode late slips"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"success": true, "lateSlips": lateSlips})
+}
