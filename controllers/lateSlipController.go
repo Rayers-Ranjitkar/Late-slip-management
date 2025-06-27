@@ -18,6 +18,8 @@ import (
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
+const MAX_LATESLIP_COUNT = 20
+
 // sendEmail sends an email using SendGrid asynchronously
 func sendEmail(toEmail, subject, content string) {
 	go func() {
@@ -71,10 +73,7 @@ func sendEmail(toEmail, subject, content string) {
 }
 
 func RequestLateSlip(c *gin.Context) {
-	//TODO: need to check if student's late slip request limit is reached or not (max is 4 per semester)
-	//If the limit is reached, return an error response
-
-	//get student ID from context and reason from request body
+	// Get student ID from context
 	userId, exists := c.Get("user_id")
 	requestID := c.GetString("request_id")
 	if !exists {
@@ -88,6 +87,7 @@ func RequestLateSlip(c *gin.Context) {
 		return
 	}
 
+	// Parse request body
 	type requestBody struct {
 		Reason string `json:"reason" binding:"required"`
 	}
@@ -97,10 +97,24 @@ func RequestLateSlip(c *gin.Context) {
 		return
 	}
 
-	//create a new late slip request
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
 	defer cancel()
 
+	studentCollection := initialializers.DB.Collection("students")
+
+	// 1. Check current late slip count
+	var student models.Student
+	err = studentCollection.FindOne(ctx, bson.M{"_id": studentID}).Decode(&student)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Student not found"})
+		return
+	}
+	if student.LateSlipCount >= MAX_LATESLIP_COUNT {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Late slip request limit reached for this semester"})
+		return
+	}
+
+	// 3. Create and insert the late slip
 	lateSlip := models.LateSlip{
 		ID:        primitive.NewObjectID(),
 		RequestID: requestID,
@@ -110,30 +124,6 @@ func RequestLateSlip(c *gin.Context) {
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 	}
-
-	studentCollection := initialializers.DB.Collection("students")
-
-	update := bson.D{{Key: "$inc", Value: bson.D{{Key: "late_slip_count", Value: 1}}}}
-	filter := bson.M{"_id": studentID}
-
-	result, err := studentCollection.UpdateOne(ctx, filter, update)
-	if err != nil {
-		c.Error(err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update student late slip count"})
-		return
-	}
-	if result.MatchedCount == 0 {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Student not found"})
-		return
-	}
-	var student models.Student
-	studentData := studentCollection.FindOne(ctx, bson.M{"_id": studentID})
-	err = studentData.Decode(&student)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to decode student data"})
-		return
-	}
-	// Insert the late slip into the database
 	lateSlipCollection := initialializers.DB.Collection("lateslips")
 	_, err = lateSlipCollection.InsertOne(ctx, lateSlip)
 	if err != nil {
@@ -142,14 +132,12 @@ func RequestLateSlip(c *gin.Context) {
 		return
 	}
 
-	//TODO: send notification to admin
-	// This could be done via email, push notification, etc.
+	// 4. Notify admin (email & websocket)
 	sendEmail(
 		"bivekshrestha239@gmail.com",
 		"New Late Slip Request Notification",
 		fmt.Sprintf(`
         A new late slip request has been submitted with the following details:
-        
         Student ID: %s
         Reason: %s
         Status: %s
@@ -161,9 +149,13 @@ func RequestLateSlip(c *gin.Context) {
 		lateSlip,
 	)
 
-	//return the late slip
-	c.JSON(http.StatusOK, gin.H{"success": true, "message": "Late slip created successfully", "lateSlip": lateSlip, "lateslip Count": student.LateSlipCount})
-
+	// 5. Return the late slip
+	c.JSON(http.StatusOK, gin.H{
+		"success":       true,
+		"message":       "Late slip created successfully",
+		"lateSlip":      lateSlip,
+		"lateSlipCount": student.LateSlipCount + 1, // reflect increment
+	})
 }
 
 func ApproveLateSlip(c *gin.Context) {
@@ -179,7 +171,7 @@ func ApproveLateSlip(c *gin.Context) {
 
 	lateSlipID, err := primitive.ObjectIDFromHex(body.LateSlipID)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid student ID"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid late slip ID"})
 		return
 	}
 	studentID, err := primitive.ObjectIDFromHex(body.StudentID)
@@ -211,33 +203,35 @@ func ApproveLateSlip(c *gin.Context) {
 		return
 	}
 	//TODO: Replace the User model with the Student model
-	StudentCollection := initialializers.DB.Collection("students")
-	_, err = StudentCollection.UpdateOne(ctx, bson.M{"_id": studentID}, bson.M{"$inc": bson.M{"lateSlipCount": 1}})
+	studentCollection := initialializers.DB.Collection("students")
+
+	// 1. Check current late slip count
+	var student models.Student
+	err = studentCollection.FindOne(ctx, bson.M{"_id": studentID}).Decode(&student)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"error":   "Failed to fetch student details",
-		})
+		c.JSON(http.StatusNotFound, gin.H{"error": "Student not found"})
+		return
+	}
+	if student.LateSlipCount >= MAX_LATESLIP_COUNT {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Late slip request limit reached for this semester"})
 		return
 	}
 
-	//TODO: need to update the lateslip count logic rignt now
-	// --- should use student model instead of lateslip model
-	// var student models.Student
-	// studentCollection := initialializers.DB.Collection("students").dec
-	// // Increment late slip count
-	// _, err = studentCollection.UpdateOne(
-	// 	ctx,
-	// 	bson.M{"_id": lateSlip.StudentID},
-	// 	bson.M{"$inc": bson.M{"lateSlipCount": 1}},
-	// )
-	// if err != nil {
-	// 	c.JSON(http.StatusInternalServerError, gin.H{
-	// 		"success": false,
-	// 		"error":   "Failed to update student late slip count",
-	// 	})
-	// 	return
-	// }
+	// 2. Increment late slip count atomically
+	update := bson.D{{Key: "$inc", Value: bson.D{{Key: "late_slip_count", Value: 1}}}}
+	result, err := studentCollection.UpdateOne(ctx, bson.M{
+		"_id":             studentID,
+		"late_slip_count": bson.M{"$lt": MAX_LATESLIP_COUNT}, // Only increment if under limit
+	}, update)
+	if err != nil {
+		c.Error(err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update student late slip count"})
+		return
+	}
+	if result.ModifiedCount == 0 {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Late slip request limit reached for this semester"})
+		return
+	}
 
 	// Update late slip status
 	lateSlip.Status = "approved"
