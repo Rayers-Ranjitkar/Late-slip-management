@@ -48,7 +48,7 @@ func (c *Client) ReadPump() {
 	}()
 
 	c.Conn.SetReadLimit(512) // Max message size
-	c.Conn.SetReadDeadline(time.Now().Add(10 * time.Minute))
+	c.Conn.SetReadDeadline(time.Now().Add(60 * time.Second))
 	c.Conn.SetPongHandler(func(string) error {
 		c.Conn.SetReadDeadline(time.Now().Add(60 * time.Second))
 		return nil

@@ -10,6 +10,7 @@ import (
 	"lateslip/initialializers"
 	"lateslip/middleware"
 
+	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
@@ -57,6 +58,8 @@ func main() {
 	}
 	r := gin.Default()
 
+	r.Use(cors.Default())
+
 	r.Use(middleware.RequestIDMiddleware())
 
 	userRoutes := r.Group("/")
@@ -72,7 +75,7 @@ func main() {
 	studentRoutes := r.Group("/student").Use(middleware.AuthMiddleware(), middleware.RequireRole("student"))
 	{
 		studentRoutes.POST("/requestLateSlip", controllers.RequestLateSlip)
-		studentRoutes.GET("/lateslips", controllers.GetAllLateSlips)
+		studentRoutes.GET("/studentLateslips", controllers.GetStudentsLateslip)
 		// Replace SSE with WebSocket endpoint for students
 		studentRoutes.GET("/ws", events.WebSocketHandler)
 	}

@@ -3,7 +3,6 @@ package controllers
 import (
 	"context"
 	"fmt"
-
 	"lateslip/events"
 	"lateslip/initialializers"
 	"lateslip/models"
@@ -112,7 +111,29 @@ func RequestLateSlip(c *gin.Context) {
 		UpdatedAt: time.Now(),
 	}
 
-	//insert the late slip into the database
+	studentCollection := initialializers.DB.Collection("students")
+
+	update := bson.D{{Key: "$inc", Value: bson.D{{Key: "late_slip_count", Value: 1}}}}
+	filter := bson.M{"_id": studentID}
+
+	result, err := studentCollection.UpdateOne(ctx, filter, update)
+	if err != nil {
+		c.Error(err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update student late slip count"})
+		return
+	}
+	if result.MatchedCount == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Student not found"})
+		return
+	}
+	var student models.Student
+	studentData := studentCollection.FindOne(ctx, bson.M{"_id": studentID})
+	err = studentData.Decode(&student)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to decode student data"})
+		return
+	}
+	// Insert the late slip into the database
 	lateSlipCollection := initialializers.DB.Collection("lateslips")
 	_, err = lateSlipCollection.InsertOne(ctx, lateSlip)
 	if err != nil {
@@ -141,7 +162,7 @@ func RequestLateSlip(c *gin.Context) {
 	)
 
 	//return the late slip
-	c.JSON(http.StatusOK, gin.H{"success": true, "message": "Late slip created successfully", "lateSlip": lateSlip})
+	c.JSON(http.StatusOK, gin.H{"success": true, "message": "Late slip created successfully", "lateSlip": lateSlip, "lateslip Count": student.LateSlipCount})
 
 }
 
@@ -190,9 +211,8 @@ func ApproveLateSlip(c *gin.Context) {
 		return
 	}
 	//TODO: Replace the User model with the Student model
-	UserCollection := initialializers.DB.Collection("users")
-	var student models.User
-	err = UserCollection.FindOne(ctx, bson.M{"_id": studentID}).Decode(&student)
+	StudentCollection := initialializers.DB.Collection("students")
+	_, err = StudentCollection.UpdateOne(ctx, bson.M{"_id": studentID}, bson.M{"$inc": bson.M{"lateSlipCount": 1}})
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"success": false,
@@ -203,9 +223,10 @@ func ApproveLateSlip(c *gin.Context) {
 
 	//TODO: need to update the lateslip count logic rignt now
 	// --- should use student model instead of lateslip model
-
+	// var student models.Student
+	// studentCollection := initialializers.DB.Collection("students").dec
 	// // Increment late slip count
-	// _, err = StudentCollection.UpdateOne(
+	// _, err = studentCollection.UpdateOne(
 	// 	ctx,
 	// 	bson.M{"_id": lateSlip.StudentID},
 	// 	bson.M{"$inc": bson.M{"lateSlipCount": 1}},
